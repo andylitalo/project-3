@@ -49,9 +49,7 @@ def generate_syllable_dictionaries(filepath="data/Syllable_dictionary.txt",
                 break
             
             # tokenize line and split into words and syllables
-            tokens = line.strip().split(delim)
-            word = tokens[0]
-            syllables = tokens[1:]
+            word, syllables = get_word_and_syllables(line, delim)
             
             # save to dictionaries
             word2syllable[word] = syllables
@@ -61,14 +59,31 @@ def generate_syllable_dictionaries(filepath="data/Syllable_dictionary.txt",
             word2num[word] = num
             num2word[num] = word
     
+    # TODO Might only need num2word and word2syllable
     return word2syllable, syllable2word, word2num, num2word
+
+def get_word_and_syllables(line, delim):
+    """
+    Returns word and list of possible number of syllables given a line from the
+    syllable dictionary.
+    """
+    tokens = line.strip().split(delim)
+    word = tokens[0]
+    syllables = tokens[1:]
+            
+    return word, syllables
+
 
 def tokenize_sonnets(dictionary, filepath="data/shakespeare.txt", 
                      chars_2_remove='!"#$%&\()*+,./:;<=>?@[\\]^_`{|}~'):
     """
     Tokenizes sonnets into individual words.
     Inputs:
+        dictionary : dictionary from words to indices from 0 to D - 1, where D
+                        is the total number of words.
         filepath : path to text file containing sonnets.
+        chars_2_remove : string of characters to remove from words, mostly
+                            punctuation, but keeps ' and - by default
     Outputs:
         X : list of lists lines from sonnets, which are tokenized as lists of
             words (no punctuation) 
@@ -88,37 +103,117 @@ def tokenize_sonnets(dictionary, filepath="data/shakespeare.txt",
             
             # tokenize
             tokens = line.split(' ')
-            # process tokens to generate data samples
-            processed_tokens = []
+            # process words to generate data samples
+            processed_words = []
             # loop through all words s
             for s in tokens:
                 # remove punctuation and spacing from word (***TODO: figure out how to incorporate it)
-                s = s.translate(str.maketrans('', '', chars_2_remove)).strip()
+                s = remove_symbols(s, chars_2_remove)
                 # if there is a word left after stripping of punctuation and spacing
                 # that is NOT a number...
                 if len(s) > 0 and not s.isdigit():
-                    # make lowercase
-                    s = s.lower()
-                    # ...check if the word is in the dictionary
-                    if s not in dictionary:
-                        # if not, try removing apostrophes (might be used as
-                        # quotation marks)
-                        s = s.translate(str.maketrans('','', "'"))
-                        # MAKE SURE WORD IS IN DICTIONARY
-                        assert s in dictionary, "missing word: %s" % s
-                        
-                    # having found word in dictionary, add its index to sequence
-                    processed_tokens += [dictionary[s]]
+                    processed_words += [process_word(s, dictionary)]                   
                     
             # add to data samples if it contains at least two tokens
-            if len(processed_tokens) > 1:
-                X += [processed_tokens]
+            if len(processed_words) > 1:
+                X += [processed_words]
             
     return X
+
+
+def remove_symbols(s, chars_2_remove, remove_whitespace=True):
+    """
+    Removes desired characters from given string s. Also remvoes whitespace by
+    default.
+    """
+    result = s.translate(str.maketrans('', '', chars_2_remove))
+    if remove_whitespace:
+        result = result.strip()
+        
+    return result
     
+def process_word(s, dictionary):
+    """
+    Processes given word before adding its index to data list.
+    Dictionary is a dictionary from words to coresponding indices, which range 
+    from 0 to D-1, where D is the total number of words.
+    """
+    # make lowercase
+    s = s.lower()
+    # ...check if the word is in the dictionary
+    if s not in dictionary:
+        # if not, try removing apostrophes (might be used as
+        # quotation marks)
+        s = remove_symbols(s, "'")
+        # MAKE SURE WORD IS IN DICTIONARY
+        assert s in dictionary, "missing word: %s" % s
+        
+    return dictionary[s]
+
+def generate_list_of_rhymes(dictionary, filepath="data/shakespeare.txt", 
+                     chars_2_remove='!"#$%&\()*+,./:;<=>?@[\\]^_`{|}~'):
+    """
+    Generates a list of pairs of rhyming words for producing rhyming sonnets.
+    """
+    # initialize list of rhyming pairs
+    rhyme_list = []
+    # initalize list of last words
+    last_word_list = []
+    
+    # load file of sonnets
+    with open(filepath, 'r') as f:
+    
+        # loop through sonnets
+        while True:
+            # read line-by-line
+            line = f.readline()
+            # stop reading if reached end of file
+            if not line:
+                break
+            
+            # check if there is a number, which indicates a new sonnet
+            new_sonnet = any(char.isdigit() for char in line)
+            # check if line is blank by removing all whitespace
+            is_blank = len(line.strip()) == 0
+            
+            if new_sonnet:
+                # if first sonnet, continue 
+                if len(last_word_list) != 14:
+                    print(line)
+                    print(last_word_list)
+                    print("number of last words = %d" % len(last_word_list))
+                    last_word_list = []
+                    continue
+                
+                # save last words in appropriate rhyming pairs ababcdcdefef
+                for i in [0, 1, 4, 5, 8, 9]:
+                    rhyme_list += [(last_word_list[i], last_word_list[i+2])]
+                # last couplet gg
+                rhyme_list += [(last_word_list[12], last_word_list[13])]
+                # initialize list of last words for new sonnet
+                last_word_list = []
+            
+            elif not is_blank:
+                last_word_list += [get_last_word(line)]                       
+    
+    return rhyme_list
+
+def get_last_word(line, chars_2_remove='!"#$%&\()*+,./:;<=>?@[\\]^_`{|}~'):
+    """
+    Returns the last word in a string of words.
+    """
+    # get last token
+    last_token = line.split(' ')[-1]
+    # remove punctuation and spacing from word (***TODO: figure out how to incorporate it)
+    last_word = remove_symbols(last_token, chars_2_remove)
+                
+    return last_word
+
+
 if __name__ == "__main__":
     dicts = generate_syllable_dictionaries()
     word2num = dicts[2]
     X = tokenize_sonnets(word2num)
+    rhyming_pairs = generate_list_of_rhymes(word2num)
 #    with open('syllable_dictionaries.pkl', 'wb') as f:
 #        pkl.dump(dicts, f)
