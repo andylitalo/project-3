@@ -3,9 +3,6 @@
 Created on Sun Mar 10 16:01:01 2019
 
 @author: Andy
-
-***Generates dictionaries between syllables and words and tokenizes sonnets into lists of words.
-TODO: figure out how to incorporate punctuation into tokenization
 """
 
 import pickle as pkl
@@ -28,14 +25,19 @@ def generate_syllable_dictionaries(filepath="data/Syllable_dictionary.txt",
     # initialize dictionaries
     word2syllable = {}
     syllable2word = {}
-    # initialize lists of words with different numbers of syllables
+    
+    # initialize lists of words for each possible number of syllables
     for i in range(max_syllables+1):
         # normal
         syllable2word[str(i)] = []
         # ending (will always be at least 1 fewer than max syllables)
         if i < max_syllables:
             syllable2word['E'+str(i)] = []
-            
+    
+    # initialize dictionaries of words to numbers and numbers to words
+    word2num = {}
+    num2word = {}
+    
     # load file
     with open(filepath, 'r') as f:
         
@@ -47,7 +49,7 @@ def generate_syllable_dictionaries(filepath="data/Syllable_dictionary.txt",
                 break
             
             # tokenize line and split into words and syllables
-            tokens = line.split(delim)
+            tokens = line.strip().split(delim)
             word = tokens[0]
             syllables = tokens[1:]
             
@@ -55,11 +57,14 @@ def generate_syllable_dictionaries(filepath="data/Syllable_dictionary.txt",
             word2syllable[word] = syllables
             for s in syllables:
                 syllable2word[s] += [word]
+            num = len(word2num)
+            word2num[word] = num
+            num2word[num] = word
     
-    return word2syllable, syllable2word
+    return word2syllable, syllable2word, word2num, num2word
 
-def tokenize_sonnets(filepath="data/shakespeare.txt", 
-                     chars_2_remove='!"#$%&\()*+,-./:;<=>?@[\\]^_`{|}~'):
+def tokenize_sonnets(dictionary, filepath="data/shakespeare.txt", 
+                     chars_2_remove='!"#$%&\()*+,./:;<=>?@[\\]^_`{|}~'):
     """
     Tokenizes sonnets into individual words.
     Inputs:
@@ -85,11 +90,25 @@ def tokenize_sonnets(filepath="data/shakespeare.txt",
             tokens = line.split(' ')
             # process tokens to generate data samples
             processed_tokens = []
-            # remove punctuation (***TODO: figure out how to incorporate it)
+            # loop through all words s
             for s in tokens:
-                s = s.translate(str.maketrans('', '', chars_2_remove)).rstrip()
-                if len(s) > 0:
-                    processed_tokens += [s]
+                # remove punctuation and spacing from word (***TODO: figure out how to incorporate it)
+                s = s.translate(str.maketrans('', '', chars_2_remove)).strip()
+                # if there is a word left after stripping of punctuation and spacing
+                # that is NOT a number...
+                if len(s) > 0 and not s.isdigit():
+                    # make lowercase
+                    s = s.lower()
+                    # ...check if the word is in the dictionary
+                    if s not in dictionary:
+                        # if not, try removing apostrophes (might be used as
+                        # quotation marks)
+                        s = s.translate(str.maketrans('','', "'"))
+                        # MAKE SURE WORD IS IN DICTIONARY
+                        assert s in dictionary, "missing word: %s" % s
+                        
+                    # having found word in dictionary, add its index to sequence
+                    processed_tokens += [dictionary[s]]
                     
             # add to data samples if it contains at least two tokens
             if len(processed_tokens) > 1:
@@ -98,7 +117,8 @@ def tokenize_sonnets(filepath="data/shakespeare.txt",
     return X
     
 if __name__ == "__main__":
-    X = tokenize_sonnets()
     dicts = generate_syllable_dictionaries()
+    word2num = dicts[2]
+    X = tokenize_sonnets(word2num)
 #    with open('syllable_dictionaries.pkl', 'wb') as f:
 #        pkl.dump(dicts, f)
