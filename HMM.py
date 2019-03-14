@@ -7,6 +7,7 @@
 ########################################
 
 import random
+import numpy as np
 
 class HiddenMarkovModel:
     '''
@@ -292,7 +293,7 @@ class HiddenMarkovModel:
                 self.O[curr][xt] = num / den
 
 
-    def unsupervised_learning(self, X, N_iters):
+    def unsupervised_learning(self, X, N_iters, backwards=False):
         '''
         Trains the HMM using the Baum-Welch algorithm on an unlabeled
         datset X. Note that this method does not return anything, but
@@ -304,6 +305,9 @@ class HiddenMarkovModel:
                         from 0 to D - 1. In other words, a list of lists.
 
             N_iters:    The number of iterations to train on.
+            
+            backwards:  if True, trains model by going from end of sequence to
+                        beginning.
         '''
 
         # Note that a comment starting with 'E' refers to the fact that
@@ -325,6 +329,9 @@ class HiddenMarkovModel:
             # For each input sequence:
             for x in X:
                 M = len(x)
+                # if training backwards, reverse sequence of words
+                if backwards:
+                    x = x[::-1]
                 # Compute the alpha and beta probability vectors.
                 alphas = self.forward(x, normalize=True)
                 betas = self.backward(x, normalize=True)
@@ -347,7 +354,8 @@ class HiddenMarkovModel:
                         if t != M:
                             A_den[curr] += P_curr[curr]
                         O_den[curr] += P_curr[curr]
-                        O_num[curr][x[t - 1]] += P_curr[curr]
+                        # adjust corresponding value in numerator of O
+                        O_num[curr][x[t-1]] += P_curr[curr]
 
                 # E: Update the expectedP(y^j = a, y^j+1 = b, x) for given (x, y)
                 for t in range(1, M):
@@ -380,26 +388,57 @@ class HiddenMarkovModel:
             for curr in range(self.L):
                 for xt in range(self.D):
                     self.O[curr][xt] = O_num[curr][xt] / O_den[curr]
+                    
 
-    def generate_emission(self, M):
+    def generate_emission(self, n_syllables, word2syllable, num2word, last_word=-1):
         '''
         Generates an emission of length M, assuming that the starting state
         is chosen uniformly at random. 
 
         Arguments:
             M:          Length of the emission to generate.
+            last_word: number of a word (>= 0) to end sequence. If given, generation
+                            is done in reverse
 
         Returns:
             emission:   The randomly generated emission as a list.
 
             states:     The randomly generated states as a list.
         '''
+        # is last word given ?
+        if last_word >= 0:
+            # initiate emisison with last word
+            emission = [num2word[last_word]]
+            # use maximum likelihood state given last word
+            state = np.argmax(np.array(self.O)[:,last_word])
+            states = [state]
+            # assign end syllables to total number of syllables
+            syllables_list = word2syllable[num2word[last_word]]
+            # can be any possible syllable count, include E, but remove 'E'
+            # char when saving
+            total_syllables = [int(n[-1]) for n in syllables_list]
 
-        emission = []
-        state = random.choice(range(self.L))
-        states = []
+            # Sample next state before moving into loop
+            rand_var = random.uniform(0, 1)
+            next_state = 0
 
-        for t in range(M):
+            while rand_var > 0:
+                rand_var -= self.A[state][next_state]
+                next_state += 1
+
+            next_state -= 1
+            state = next_state
+            
+        # otherwise just randomly choose initial state
+        else:
+            state = random.choice(range(self.L))
+            emission = []
+            states = []
+            total_syllables = [0]
+            
+        # loop
+        while n_syllables not in total_syllables:
+            
             # Append state.
             states.append(state)
 
@@ -412,7 +451,47 @@ class HiddenMarkovModel:
                 next_obs += 1
 
             next_obs -= 1
-            emission.append(next_obs)
+            
+            # possible syllables for current word
+            curr_syllables = word2syllable[num2word[next_obs]]
+            # initialize new count of total number of syllables
+            new_total_syllables = []
+            # check if word will make sonnet line too long
+            not_too_long = False
+            
+            # loop through possible total syllables
+            for m in total_syllables:
+                # loop through possible syllables of current word
+                for n in curr_syllables:
+                    # add syllable numbers that aren't for the end of the word
+                    if 'E' not in n:
+                        num = int(n)
+                        if m + num <= n_syllables:
+                            new_total_syllables += [m+int(n)]
+                            not_too_long = True
+                    # only consider syllables for the end of the line if it
+                    # allows the line to reach the maximum number of syllables
+                    else:
+                        # only consider end-of-line syllable count if not given
+                        # the last word in the line already
+                        if last_word == -1:
+                            # extract the number from the string 'E#'
+                            num = int(n[1])
+                            # only add word if reaches end of line
+                            if m + num == n_syllables:
+                                new_total_syllables += [m + num]
+                                not_too_long = True
+                            
+            # does this word make the sonnet too long ? 
+            if not_too_long:    
+                # no, then add it
+                emission.append(num2word[next_obs])
+                # also update total syllable count
+                total_syllables = new_total_syllables
+            else:
+                # yes, then remove hidden state that was added and restart
+                states = states[:-1]
+                continue
 
             # Sample next state.
             rand_var = random.uniform(0, 1)
@@ -424,7 +503,11 @@ class HiddenMarkovModel:
 
             next_state -= 1
             state = next_state
-
+            
+        # if given last word, generated in reverse, so reverse back to normal
+        if last_word >= 0:
+            emission.reverse()
+            
         return emission, states
 
 
@@ -531,7 +614,7 @@ def supervised_HMM(X, Y):
     return HMM
 
 
-def unsupervised_HMM(X, n_states, N_iters):
+def unsupervised_HMM(X, n_states, N_iters, backwards=False):
     '''
     Helper function to train an unsupervised HMM. The function determines the
     number of unique observations in the given data, initializes
@@ -575,6 +658,6 @@ def unsupervised_HMM(X, n_states, N_iters):
 
     # Train an HMM with unlabeled data.
     HMM = HiddenMarkovModel(A, O)
-    HMM.unsupervised_learning(X, N_iters)
+    HMM.unsupervised_learning(X, N_iters, backwards=False)
 
     return HMM
