@@ -177,25 +177,49 @@ def generate_list_of_rhymes(dictionary, filepath="data/shakespeare.txt",
             is_blank = len(line.strip()) == 0
             
             if new_sonnet:
-                # if first sonnet, continue 
-                if len(last_word_list) != 14:
-                    print(line)
-                    print(last_word_list)
-                    print("number of last words = %d" % len(last_word_list))
+                
+                if len(last_word_list) == 0:
                     last_word_list = []
                     continue
                 
-                # save last words in appropriate rhyming pairs ababcdcdefef
-                for i in [0, 1, 4, 5, 8, 9]:
-                    rhyme_list += [(last_word_list[i], last_word_list[i+2])]
-                # last couplet gg
-                rhyme_list += [(last_word_list[12], last_word_list[13])]
-                # initialize list of last words for new sonnet
-                last_word_list = []
-            
-            elif not is_blank:
-                last_word_list += [get_last_word(line)]                       
-    
+                elif len(last_word_list) == 12:
+                    # save last words in appropriate rhyming pairs ababcdcdefef
+                    for i in [0, 1, 4, 5, 8, 9]:
+                        rhyme_list += [(last_word_list[i], last_word_list[i+2])]
+                    # initialize list of last words for new sonnet
+                    last_word_list = []
+                    
+                elif len(last_word_list) == 14:  
+                    # save last words in appropriate rhyming pairs ababcdcdefef
+                    for i in [0, 1, 4, 5, 8, 9]:
+                        rhyme_list += [(last_word_list[i], last_word_list[i+2])]
+                    # last couplet gg
+                    rhyme_list += [(last_word_list[12], last_word_list[13])]
+                    # initialize list of last words for new sonnet
+                    last_word_list = []
+                
+                elif len(last_word_list) == 15:
+                        # save last words in appropriate rhyming pairs ababacdcdefef
+                        # except for a's, which will be saved explicitly below
+                        for i in [1, 5, 6, 9, 10]:
+                            rhyme_list += [(last_word_list[i], last_word_list[i+2])]
+                        # last couplet gg
+                        rhyme_list += [(last_word_list[13], last_word_list[14])]
+                        # add pairs from 1st, 3rd, and 5th lines
+                        rhyme_list += [(last_word_list[0], last_word_list[2]),
+                                       (last_word_list[0],last_word_list[4]),
+                                       (last_word_list[2],last_word_list[4])]
+                        # initialize list of last words for new sonnet
+                        last_word_list = []
+                
+                else: 
+                    print('Length of last word list is not accounted for, = %i' 
+                          % len(last_word_list))  
+                    
+            # if not a new sonnet and not a blank line, load last word
+             elif not is_blank:
+                last_word_list += [get_last_word(line)] 
+                
     return rhyme_list
 
 def get_last_word(line, chars_2_remove='!"#$%&\()*+,./:;<=>?@[\\]^_`{|}~'):
